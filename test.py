@@ -2,10 +2,9 @@ import turtle
 
 # Set up turtle screen
 screen = turtle.Screen()
-screen.setup(width=1.0, height=1.0)  # Make the screen full window size
-screen.title("Grid Drawing")
-t = turtle.Turtle()
-t.speed(0)
+speed(0)
+screen = turtle.Screen()
+screen.setup(width=1000, height=1000, startx=498, starty=498)
 
 # Separate turtle for writing input on screen
 input_turtle = turtle.Turtle()
