@@ -1,143 +1,241 @@
 import turtle
 
-# Set up turtle screen
+# Initialize the main screen
 screen = turtle.Screen()
-speed(0)
-screen = turtle.Screen()
-screen.setup(width=1000, height=1000, startx=498, starty=498)
+screen.title("Color Grid Application")
+screen.setup(width=800, height=800)  # Fixed window size
+screen.tracer(0)  # Turn off automatic updating for smoother drawing
 
-# Separate turtle for writing input on screen
-input_turtle = turtle.Turtle()
-input_turtle.penup()
-input_turtle.hideturtle()
+# Define areas:
+# - Grid Area: Bottom 700 pixels
+# - History Area: Top 100 pixels
 
-# Colors corresponding to ROYGBIV
-colors = {'r': 'red', 'o': 'orange', 'y': 'yellow', 'g': 'green', 'b': 'blue', 'i': 'indigo', 'v': 'violet'}
+GRID_AREA_HEIGHT = 700
+HISTORY_AREA_HEIGHT = 100
 
-# Variables to track the selected block and color
-selected_block = None
+# Create turtles
+grid_turtle = turtle.Turtle()
+grid_turtle.hideturtle()
+grid_turtle.penup()
+grid_turtle.speed(0)
+
+history_turtle = turtle.Turtle()
+history_turtle.hideturtle()
+history_turtle.penup()
+history_turtle.speed(0)
+
+# Define colors
+colors = {
+    'r': 'red',
+    'o': 'orange',
+    'y': 'yellow',
+    'g': 'green',
+    'b': 'blue',
+    'i': 'indigo',
+    'v': 'violet'
+}
+
+# Variables to track state
 grid_size = 0
-input_buffer = ''  # Buffer to collect multi-digit inputs
-block_size = 50  # Default block size
+block_size = 50
+input_buffer = ""
+action_history = []  # List of tuples: (block_num, color_key)
+block_colors = {}  # Mapping of block_num to color_key
 
-# Function to draw a grid
+# Function to get an odd number for grid size
+def get_grid_size():
+    while True:
+        num = screen.numinput("Grid Size", "Enter an odd number of blocks (e.g., 3, 5, 7):", default=5, minval=1, maxval=21)
+        if num is None:
+            continue  # Prompt again if input is cancelled
+        num = int(num)
+        if num % 2 == 1:
+            return num
+        else:
+            screen.textinput("Invalid Input", "Please enter an odd number.")
+
+# Function to draw the grid
 def draw_grid(blocks):
-    global grid_size, block_size
+    global block_size, grid_size
     grid_size = blocks
-    window_width = screen.window_width()
-    window_height = screen.window_height()
-    
-    # Adjust block size based on window size
-    block_size = min(window_width, window_height) // blocks
-    
-    t.penup()
-    start_x = -(blocks // 2) * block_size
-    start_y = (blocks // 2) * block_size
+    block_size = GRID_AREA_HEIGHT / blocks  # Adjust block size to fit the grid area
+
+    grid_turtle.clear()
+
+    start_x = -GRID_AREA_HEIGHT / 2
+    start_y = GRID_AREA_HEIGHT / 2
+
     for row in range(blocks):
         for col in range(blocks):
-            draw_square(start_x + col * block_size, start_y - row * block_size)
-    t.hideturtle()
+            x = start_x + col * block_size
+            y = start_y - row * block_size
+            draw_square(x, y, block_size, outline_color='black', fill_color='white')
+            # Write the block number below the square
+            block_num = row * blocks + col + 1
+            grid_turtle.goto(x + block_size / 2, y - block_size - 20)
+            grid_turtle.write(str(block_num), align="center", font=("Arial", 12, "normal"))
 
-# Function to draw a square
-def draw_square(x, y):
-    t.goto(x, y)
-    t.pendown()
+    screen.update()
+
+# Function to draw a single square
+def draw_square(x, y, size, outline_color='black', fill_color='white'):
+    grid_turtle.goto(x, y)
+    grid_turtle.pendown()
+    grid_turtle.color(outline_color, fill_color)
+    grid_turtle.begin_fill()
     for _ in range(4):
-        t.forward(block_size)
-        t.right(90)
-    t.penup()
+        grid_turtle.forward(size)
+        grid_turtle.right(90)
+    grid_turtle.end_fill()
+    grid_turtle.penup()
 
 # Function to color a specific block
-def color_block(block_num, color):
-    global grid_size
-    row = (block_num - 1) // grid_size  # Determine the row of the block
-    col = (block_num - 1) % grid_size  # Determine the column of the block
-    start_x = -((grid_size // 2) * block_size)  # Calculate start_x based on grid size
-    start_y = (grid_size // 2) * block_size  # Calculate start_y based on grid size
-    
-    t.penup()
-    # Correct coordinates for turtle movement
-    t.goto(start_x + col * block_size, start_y - row * block_size)
-    
-    t.fillcolor(color)
-    t.begin_fill()
-    for _ in range(4):
-        t.forward(block_size)
-        t.right(90)
-    t.end_fill()
+def color_block(block_num, color_key):
+    global block_colors
+    if color_key not in colors:
+        return  # Invalid color key
 
-# Function to process selected block from buffer
-def select_block():
-    global selected_block, input_buffer
-    if input_buffer.isdigit():
-        block_num = int(input_buffer)
-        if 1 <= block_num <= grid_size * grid_size:
-            selected_block = block_num
-            print(f"Selected block: {selected_block}")
-        else:
-            print(f"Invalid block number. Please enter a block between 1 and {grid_size * grid_size}")
-    input_buffer = ''  # Reset the buffer after processing the input
+    if not (1 <= block_num <= grid_size * grid_size):
+        return  # Invalid block number
 
-# Function to handle number key presses (0-9)
-def handle_number_key(digit):
+    # Calculate row and column
+    row = (block_num - 1) // grid_size
+    col = (block_num - 1) % grid_size
+
+    # Calculate position
+    x = -GRID_AREA_HEIGHT / 2 + col * block_size
+    y = GRID_AREA_HEIGHT / 2 - row * block_size
+
+    # Draw filled square with color
+    draw_square(x, y, block_size, outline_color='black', fill_color=colors[color_key])
+
+    # Update block_colors and action_history
+    block_colors[block_num] = color_key
+    action_history.append((block_num, color_key))
+
+    # Update history display
+    update_history_display()
+
+    screen.update()
+
+# Function to update the history display
+def update_history_display():
+    history_turtle.clear()
+    history_turtle.goto(-380, GRID_AREA_HEIGHT / 2 + 20)  # Position in history area
+    if action_history:
+        history_text = "History: " + ", ".join([f"{num}{color}" for num, color in action_history])
+    else:
+        history_text = "History: None"
+    history_turtle.write(history_text, align="left", font=("Arial", 12, "normal"))
+
+# Function to process the input buffer
+def process_input():
     global input_buffer
-    input_buffer += digit
-    print(f"Current input: {input_buffer}")
-    display_input()  # Call to update the displayed input
+    if len(input_buffer) < 2:
+        input_buffer = ""  # Not enough characters
+        return
 
-# Function to listen for a color key press and color the selected block
-def color_selected_block(color_key):
-    global selected_block
-    if input_buffer:
-        select_block()  # Process the buffered number before coloring
-    if selected_block is not None and color_key in colors:
-        color_block(selected_block, colors[color_key])
-        print(f"Colored block {selected_block} {colors[color_key]}")
-        selected_block = None  # Reset selection after coloring
-        display_input()  # Update the display to clear input after action
+    # Extract block number and color key
+    block_part = input_buffer[:-1]
+    color_key = input_buffer[-1].lower()
 
-# Function to display the current input under the grid
-def display_input():
-    input_turtle.clear()  # Clear previous input before writing the new one
-    input_turtle.goto(-screen.window_width() // 2 + 20, -screen.window_height() // 2 + 20)  # Set position under the grid
-    input_turtle.write(f"Input: {input_buffer}", align="center", font=("Arial", 12, "normal"))
+    if not block_part.isdigit() or color_key not in colors:
+        input_buffer = ""  # Invalid input
+        return
 
-# Input validation for odd number
-def get_odd_input():
-    while True:
-        num = turtle.numinput("Grid Size", "Enter the number of blocks (odd number):", default=3, minval=1, maxval=101)
-        if num is None:
-            return None
-        if int(num) % 2 == 1:
-            return int(num)
-        else:
-            turtle.textinput("Error", "Please enter an odd number.")
+    block_num = int(block_part)
 
-# Main program
-def main():
-    blocks = get_odd_input()
-    if blocks:
-        draw_grid(blocks)
+    if 1 <= block_num <= grid_size * grid_size:
+        color_block(block_num, color_key)
+    else:
+        # Invalid block number, optionally display a message
+        pass
 
-    # Bind number keys to handle multi-digit input
-    for i in range(10):
-        screen.onkey(lambda i=i: handle_number_key(str(i)), str(i))
+    input_buffer = ""  # Reset buffer after processing
 
-    # Bind ROYGBIV keys to color the selected block
-    screen.onkey(lambda: color_selected_block('r'), 'r')
-    screen.onkey(lambda: color_selected_block('o'), 'o')
-    screen.onkey(lambda: color_selected_block('y'), 'y')
-    screen.onkey(lambda: color_selected_block('g'), 'g')
-    screen.onkey(lambda: color_selected_block('b'), 'b')
-    screen.onkey(lambda: color_selected_block('i'), 'i')
-    screen.onkey(lambda: color_selected_block('v'), 'v')
+# Function to handle key presses
+def handle_keypress(key):
+    global input_buffer
+
+    if key in colors:
+        # If a color key is pressed, process the current input buffer
+        input_buffer += key
+        process_input()
+    elif key.isdigit():
+        # If a number key is pressed, add to the buffer
+        input_buffer += key
+    elif key == 'u':
+        # Undo the last action
+        undo_last_action()
+    elif key == 'x':  # Changed from 'r' to 'x' for reset
+        # Reset the grid
+        reset_grid()
+    # Ignore other keys
+
+# Function to undo the last action
+def undo_last_action():
+    if not action_history:
+        return  # Nothing to undo
+
+    last_block, last_color = action_history.pop()
+    block_colors.pop(last_block, None)
+
+    # Reset the block to white
+    row = (last_block - 1) // grid_size
+    col = (last_block - 1) % grid_size
+    x = -GRID_AREA_HEIGHT / 2 + col * block_size
+    y = GRID_AREA_HEIGHT / 2 - row * block_size
+    draw_square(x, y, block_size, outline_color='black', fill_color='white')
+
+    update_history_display()
+    screen.update()
+
+# Function to reset the grid
+def reset_grid():
+    global action_history, block_colors, input_buffer, grid_size
+    action_history = []
+    block_colors = {}
+    input_buffer = ""
+    grid_turtle.clear()
+    history_turtle.clear()
+    grid_size = get_grid_size()  # Get new grid size
+    draw_grid(grid_size)  # Redraw the grid with new size
+    update_history_display()
+    bind_keys()  # Rebind keys after resetting
+    screen.update()
+
+# Function to display the current input in the history area
+def display_current_input():
+    history_turtle.goto(-380, GRID_AREA_HEIGHT / 2 + 50)  # Position above history text
+    history_turtle.write(f"Current Input: {input_buffer}", align="left", font=("Arial", 12, "normal"))
+
+# Initial setup
+def setup():
+    global grid_size
+    grid_size = get_grid_size()
+    draw_grid(grid_size)
+    update_history_display()
+
+# Bind key presses
+def bind_keys():
+    # Clear existing key bindings
+    screen._root.bind_all('<KeyPress>', lambda e: None)
+
+    # Bind digits 0-9
+    for digit in '0123456789':
+        screen.onkey(lambda d=digit: handle_keypress(d), digit)
+    
+    # Bind color keys (r, o, y, g, b, i, v)
+    for color_key in colors.keys():
+        screen.onkey(lambda c=color_key: handle_keypress(c), color_key)
+    
+    # Bind undo (u) and reset (x)
+    screen.onkey(lambda: handle_keypress('u'), 'u')  # Undo
+    screen.onkey(lambda: handle_keypress('x'), 'x')  # Reset
 
     screen.listen()
 
-    # Prevent the window from closing immediately
-    turtle.done()
-    screen.mainloop()
-
-if __name__ == "__main__":
-    main()
-
+# Run the application
+setup()
+bind_keys()
+screen.mainloop()
