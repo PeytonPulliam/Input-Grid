@@ -1,19 +1,21 @@
 import turtle
+from tkinter import Tk, Text, Button, Label, Entry
+import zipfile
+import json
+import os
 
 # Initialize the main screen
 screen = turtle.Screen()
 screen.title("Color Grid Application")
-screen.setup(width=800, height=800)  # Fixed window size
-screen.tracer(0)  # Turn off automatic updating for smoother drawing
-
-# Define areas:
-# - Grid Area: Bottom 700 pixels
-# - History Area: Top 100 pixels
+screen.setup(width=800, height=800)
+screen.tracer(0)
 
 GRID_AREA_HEIGHT = 700
-HISTORY_AREA_HEIGHT = 100
+grid_size = 0
+block_size = 50
+block_colors = {}  # To store the colors of blocks
+action_history = []
 
-# Create turtles
 grid_turtle = turtle.Turtle()
 grid_turtle.hideturtle()
 grid_turtle.penup()
@@ -24,44 +26,38 @@ history_turtle.hideturtle()
 history_turtle.penup()
 history_turtle.speed(0)
 
-# Define colors
-colors = {
-    'r': 'red',
-    'o': 'orange',
-    'y': 'yellow',
-    'g': 'green',
-    'b': 'blue',
-    'i': 'indigo',
-    'v': 'violet'
-}
+# Tkinter window setup
+root = Tk()
+root.title("Grid Color Application")
+root.geometry("800x300")
 
-# Variables to track state
-grid_size = 0
-block_size = 50
-input_buffer = ""
-action_history = []  # List of tuples: (block_num, color_key)
-block_colors = {}  # Mapping of block_num to color_key
+# Text box to accept user input for commands
+command_box = Text(root, height=2, width=60)
+command_box.grid(row=0, column=0, columnspan=4)
 
-# Function to get an odd number for grid size
+# Labels for row/column entry
+row_label = Label(root, text="Row Number:")
+row_label.grid(row=1, column=0)
+row_entry = Entry(root)
+row_entry.grid(row=1, column=1)
+
+column_label = Label(root, text="Column Number:")
+column_label.grid(row=2, column=0)
+column_entry = Entry(root)
+column_entry.grid(row=2, column=1)
+
+# Function to get the grid size
 def get_grid_size():
-    while True:
-        num = screen.numinput("Grid Size", "Enter an odd number of blocks (e.g., 3, 5, 7):", default=5, minval=1, maxval=21)
-        if num is None:
-            continue  # Prompt again if input is cancelled
-        num = int(num)
-        if num % 2 == 1:
-            return num
-        else:
-            screen.textinput("Invalid Input", "Please enter an odd number.")
+    num = screen.numinput("Grid Size", "Enter an odd number of blocks (e.g., 3, 5, 7):", default=5, minval=1, maxval=21)
+    return int(num) if num and num % 2 == 1 else 5
 
 # Function to draw the grid
 def draw_grid(blocks):
     global block_size, grid_size
     grid_size = blocks
-    block_size = GRID_AREA_HEIGHT / blocks  # Adjust block size to fit the grid area
+    block_size = GRID_AREA_HEIGHT / blocks
 
     grid_turtle.clear()
-
     start_x = -GRID_AREA_HEIGHT / 2
     start_y = GRID_AREA_HEIGHT / 2
 
@@ -69,16 +65,15 @@ def draw_grid(blocks):
         for col in range(blocks):
             x = start_x + col * block_size
             y = start_y - row * block_size
-            draw_square(x, y, block_size, outline_color='black', fill_color='white')
-            # Write the block number below the square
+            draw_square(x, y, block_size, 'black', 'white')
             block_num = row * blocks + col + 1
             grid_turtle.goto(x + block_size / 2, y - block_size - 20)
             grid_turtle.write(str(block_num), align="center", font=("Arial", 12, "normal"))
-
+    
     screen.update()
 
-# Function to draw a single square
-def draw_square(x, y, size, outline_color='black', fill_color='white'):
+# Function to draw a square with a specific color
+def draw_square(x, y, size, outline_color, fill_color):
     grid_turtle.goto(x, y)
     grid_turtle.pendown()
     grid_turtle.color(outline_color, fill_color)
@@ -89,153 +84,183 @@ def draw_square(x, y, size, outline_color='black', fill_color='white'):
     grid_turtle.end_fill()
     grid_turtle.penup()
 
-# Function to color a specific block
-def color_block(block_num, color_key):
+# Function to color a block with a specific color
+def color_block(block_num, color):
     global block_colors
-    if color_key not in colors:
-        return  # Invalid color key
+    try:
+        block_num = int(block_num)  # Ensure block_num is an integer
+        if not (1 <= block_num <= grid_size * grid_size):
+            return
+        
+        row = (block_num - 1) // grid_size
+        col = (block_num - 1) % grid_size
 
-    if not (1 <= block_num <= grid_size * grid_size):
-        return  # Invalid block number
+        x = -GRID_AREA_HEIGHT / 2 + col * block_size
+        y = GRID_AREA_HEIGHT / 2 - row * block_size
 
-    # Calculate row and column
-    row = (block_num - 1) // grid_size
-    col = (block_num - 1) % grid_size
-
-    # Calculate position
-    x = -GRID_AREA_HEIGHT / 2 + col * block_size
-    y = GRID_AREA_HEIGHT / 2 - row * block_size
-
-    # Draw filled square with color
-    draw_square(x, y, block_size, outline_color='black', fill_color=colors[color_key])
-
-    # Update block_colors and action_history
-    block_colors[block_num] = color_key
-    action_history.append((block_num, color_key))
-
-    # Update history display
-    update_history_display()
-
-    screen.update()
+        color_hex = convert_color(color)
+        if color_hex:  # Only draw if the color is valid
+            draw_square(x, y, block_size, 'black', color_hex)
+            block_colors[block_num] = color_hex
+            action_history.append((block_num, color_hex))
+            update_history_display()
+            screen.update()
+    except ValueError:
+        print("Invalid block number.")
 
 # Function to update the history display
 def update_history_display():
     history_turtle.clear()
-    history_turtle.goto(-380, GRID_AREA_HEIGHT / 2 + 20)  # Position in history area
+    history_turtle.goto(-380, GRID_AREA_HEIGHT / 2 + 20)
     if action_history:
         history_text = "History: " + ", ".join([f"{num}{color}" for num, color in action_history])
     else:
         history_text = "History: None"
     history_turtle.write(history_text, align="left", font=("Arial", 12, "normal"))
 
-# Function to process the input buffer
-def process_input():
-    global input_buffer
-    if len(input_buffer) < 2:
-        input_buffer = ""  # Not enough characters
-        return
+# Process the command entered in the text box
+def process_command():
+    command = command_box.get("1.0", "end").strip().lower()
 
-    # Extract block number and color key
-    block_part = input_buffer[:-1]
-    color_key = input_buffer[-1].lower()
+    if command.startswith("fill"):
+        parts = command.split()
+        if len(parts) >= 4 and parts[1].isdigit() and parts[2] == "with":
+            block_num = parts[1]  # Keep it as a string to convert later
+            color_input = " ".join(parts[3:])
+            color_block(block_num, color_input)
+    
+    command_box.delete("1.0", "end")
 
-    if not block_part.isdigit() or color_key not in colors:
-        input_buffer = ""  # Invalid input
-        return
+# Function to fill an entire row
+def fill_row():
+    try:
+        row = int(row_entry.get())
+        color = command_box.get("1.0", "end").strip()
+        if 1 <= row <= grid_size:
+            for col in range(1, grid_size + 1):
+                block_num = (row - 1) * grid_size + col
+                color_block(block_num, color)
+    except ValueError:
+        print("Invalid row number.")
+    command_box.delete("1.0", "end")
 
-    block_num = int(block_part)
+# Function to fill an entire column
+def fill_column():
+    try:
+        column = int(column_entry.get())
+        color = command_box.get("1.0", "end").strip()
+        if 1 <= column <= grid_size:
+            for row in range(1, grid_size + 1):
+                block_num = (row - 1) * grid_size + column
+                color_block(block_num, color)
+    except ValueError:
+        print("Invalid column number.")
+    command_box.delete("1.0", "end")
 
-    if 1 <= block_num <= grid_size * grid_size:
-        color_block(block_num, color_key)
-    else:
-        # Invalid block number, optionally display a message
-        pass
+# Function to convert color inputs
+def convert_color(color_input):
+    color_input = color_input.strip().lower()
+    
+    # Check for plaintext color names
+    if color_input in {'red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'black', 'white', 'gray', 'purple', 'orange'}:
+        return color_input
+    
+    # Check for hexadecimal
+    if color_input.startswith('#') and len(color_input) == 7:
+        return color_input
+    
+    # Check for RGB tuple
+    if color_input.startswith('(') and color_input.endswith(')'):
+        try:
+            rgb_values = tuple(map(int, color_input[1:-1].split(',')))
+            if len(rgb_values) == 3 and all(0 <= v <= 255 for v in rgb_values):
+                # Convert RGB to hex
+                return f'#{rgb_values[0]:02x}{rgb_values[1]:02x}{rgb_values[2]:02x}'
+        except ValueError:
+            pass  # Ignore invalid RGB input
 
-    input_buffer = ""  # Reset buffer after processing
+    return None  # Return None for invalid inputs
 
-# Function to handle key presses
-def handle_keypress(key):
-    global input_buffer
+# Save grid to a zip file
+def save_grid():
+    grid_data = {
+        'grid_size': grid_size,
+        'block_colors': block_colors,
+    }
+    
+    # Save grid data to a JSON file
+    with open('grid_data.json', 'w') as f:
+        json.dump(grid_data, f)
+    
+    # Zip the file
+    with zipfile.ZipFile('grid.zip', 'w') as zf:
+        zf.write('grid_data.json')
+    
+    # Remove the JSON file after zipping
+    os.remove('grid_data.json')
 
-    if key in colors:
-        # If a color key is pressed, process the current input buffer
-        input_buffer += key
-        process_input()
-    elif key.isdigit():
-        # If a number key is pressed, add to the buffer
-        input_buffer += key
-    elif key == 'u':
-        # Undo the last action
-        undo_last_action()
-    elif key == 'x':  # Changed from 'r' to 'x' for reset
-        # Reset the grid
-        reset_grid()
-    # Ignore other keys
+# Load grid from a zip file
+def load_grid():
+    if not os.path.exists('grid.zip'):
+        return  # Handle case where file does not exist
+    
+    # Unzip and load the grid data
+    with zipfile.ZipFile('grid.zip', 'r') as zf:
+        zf.extractall()
 
-# Function to undo the last action
-def undo_last_action():
-    if not action_history:
-        return  # Nothing to undo
+    with open('grid_data.json', 'r') as f:
+        grid_data = json.load(f)
+    
+    os.remove('grid_data.json')  # Clean up extracted file
 
-    last_block, last_color = action_history.pop()
-    block_colors.pop(last_block, None)
+    # Restore grid size and block colors
+    global grid_size, block_colors
+    grid_size = grid_data['grid_size']
+    block_colors = grid_data['block_colors']
 
-    # Reset the block to white
-    row = (last_block - 1) // grid_size
-    col = (last_block - 1) % grid_size
-    x = -GRID_AREA_HEIGHT / 2 + col * block_size
-    y = GRID_AREA_HEIGHT / 2 - row * block_size
-    draw_square(x, y, block_size, outline_color='black', fill_color='white')
+    # Redraw the grid
+    draw_grid(grid_size)
+    
+    # Recolor the blocks
+    for block_num, color in block_colors.items():
+        color_block(block_num, color)
 
-    update_history_display()
-    screen.update()
-
-# Function to reset the grid
+# Reset the grid
 def reset_grid():
-    global action_history, block_colors, input_buffer, grid_size
+    global action_history, block_colors, grid_size
     action_history = []
     block_colors = {}
-    input_buffer = ""
     grid_turtle.clear()
     history_turtle.clear()
-    grid_size = get_grid_size()  # Get new grid size
-    draw_grid(grid_size)  # Redraw the grid with new size
-    update_history_display()
-    bind_keys()  # Rebind keys after resetting
-    screen.update()
-
-# Function to display the current input in the history area
-def display_current_input():
-    history_turtle.goto(-380, GRID_AREA_HEIGHT / 2 + 50)  # Position above history text
-    history_turtle.write(f"Current Input: {input_buffer}", align="left", font=("Arial", 12, "normal"))
-
-# Initial setup
-def setup():
-    global grid_size
     grid_size = get_grid_size()
     draw_grid(grid_size)
     update_history_display()
+    screen.update()
 
-# Bind key presses
-def bind_keys():
-    # Clear existing key bindings
-    screen._root.bind_all('<KeyPress>', lambda e: None)
+# Buttons to handle various commands
+submit_button = Button(root, text="Submit Command", command=process_command)
+submit_button.grid(row=0, column=3)
 
-    # Bind digits 0-9
-    for digit in '0123456789':
-        screen.onkey(lambda d=digit: handle_keypress(d), digit)
-    
-    # Bind color keys (r, o, y, g, b, i, v)
-    for color_key in colors.keys():
-        screen.onkey(lambda c=color_key: handle_keypress(c), color_key)
-    
-    # Bind undo (u) and reset (x)
-    screen.onkey(lambda: handle_keypress('u'), 'u')  # Undo
-    screen.onkey(lambda: handle_keypress('x'), 'x')  # Reset
+fill_row_button = Button(root, text="Fill Row", command=fill_row)
+fill_row_button.grid(row=1, column=2)
 
-    screen.listen()
+fill_column_button = Button(root, text="Fill Column", command=fill_column)
+fill_column_button.grid(row=2, column=2)
 
-# Run the application
-setup()
-bind_keys()
-screen.mainloop()
+save_button = Button(root, text="Save Grid", command=save_grid)
+save_button.grid(row=3, column=0)
+
+load_button = Button(root, text="Load Grid", command=load_grid)
+load_button.grid(row=3, column=1)
+
+reset_button = Button(root, text="Reset Grid", command=reset_grid)
+reset_button.grid(row=3, column=2)
+
+# Initial setup
+grid_size = get_grid_size()
+draw_grid(grid_size)
+update_history_display()
+
+# Start the main loop
+turtle.mainloop()
+root.mainloop()
